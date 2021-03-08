@@ -20,6 +20,12 @@ formatTime = function(unixTime) {
         ' - ' +
         date.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', hour12: false});
 };
+formatDate = function(unixTime) {
+    var date = new Date();
+    date.setTime(unixTime * 1000);
+
+    return date.toLocaleDateString('en-US', {day: 'numeric', month: 'short', year: 'numeric'});
+};
 
 wordSmallInt = function(x) {
     switch(x) {
@@ -186,7 +192,7 @@ mcstats.isActive = function(last) {
 
 // Create a widget showing a player's last online time and activity
 mcstats.lastOnlineWidget = function(last) {
-    var fmt = formatTime(last);
+    var fmt = formatDate(last);
     if(mcstats.isActive(last)) {
         return `<span class="text-success">${fmt}</span>`;
     } else {
