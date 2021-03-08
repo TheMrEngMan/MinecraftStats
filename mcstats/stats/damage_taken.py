@@ -4,7 +4,7 @@ mcstats.registry.append(
     mcstats.MinecraftStat(
         'damage_taken',
         {
-            'title': 'Punching Bag',
+            'title': 'Oofs',
             'desc': 'Damage taken',
             'unit': 'int',
         },
