@@ -15,12 +15,13 @@ mcstats.showPlayerList = function(page=1,inactive=false) {
         var viewName = inactive ? 'allplayers' : 'players';
 
         var numPlayers = mcstats.info.numPlayers;
+        var numValidPlayers = mcstats.info.numValidPlayers;
         var numActive = mcstats.info.numActive;
         var numInactive = numPlayers - numActive;
         var numPerPage = mcstats.info.playersPerPage;
         var numPagesAroundCurrent = 3; // yep, this is hardcoded
 
-        var numPages = Math.ceil((inactive ? numPlayers : numActive) / numPerPage);
+        var numPages = Math.ceil((inactive ? numValidPlayers : numActive) / numPerPage);
 
         list.forEach(function(player) {
             var widget = mcstats.playerWidget(player.uuid);

@@ -471,6 +471,7 @@ serverPlayers = dict()
 
 playerlist = []
 numActivePlayers = 0
+numTotalPlayers = len(players.items())
 
 for uuid, player in players.items():
     if (not uuid in excludePlayers) and  ('last' in player) and ('name' in player) and ('stats' in player):
@@ -529,7 +530,8 @@ info = {
     'minPlayTime': min_playtime,
     'crown': [config.crown.gold, config.crown.silver, config.crown.bronze],
     'cacheQ': playerCacheQ,
-    'numPlayers': len(playerlist),
+    'numPlayers': numTotalPlayers,
+    'numValidPlayers': len(playerlist),
     'numActive': numActivePlayers,
     'playersPerPage': playersPerPage,
     'showLastOnline': config.client.showLastOnline,
