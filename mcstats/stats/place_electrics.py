@@ -10,6 +10,7 @@ redstone_item_patterns = [
     'minecraft:observer',
     'minecraft:comparator',
     'minecraft:repeater',
+    'minecraft:sculk_sensor',
     'minecraft:.+_pressure_plate',
     'minecraft:target',
 ]
@@ -22,9 +23,5 @@ mcstats.registry.append(
             'desc': 'Redstone items placed',
             'unit': 'int',
         },
-        # subtract mined from placed
-        mcstats.StatDiffReader(
-            mcstats.StatSumMatchReader(['minecraft:used'], redstone_item_patterns),
-            mcstats.StatSumMatchReader(['minecraft:mined'], redstone_item_patterns),
-        )
+        mcstats.StatSumMatchReader(['minecraft:used'], redstone_item_patterns)
     ))

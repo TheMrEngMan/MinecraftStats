@@ -11,6 +11,7 @@ var mcstats = {
     viewIcon: document.getElementById('view-icon'),
     viewContent: document.getElementById('view-content'),
 
+    localization: {},
     info: {},
     awards: {},
     events: {},
@@ -80,23 +81,14 @@ mcstats.showView = function(title, subtitle, desc, iconUrl) {
         mcstats.viewIcon.style.display = 'none';
     }
 
+    mcstats.localizePage();
     mcstats.loader.style.display = 'none';
     mcstats.content.style.display = 'block';
 }
 
 // Collapse navbar when an item is clicked
-var navbarButton = document.getElementById('collapse-button');
-var navbar = new BSN.Collapse(navbarButton);
-var collapseNavbar = function() {
-    if(navbarButton.getAttribute('aria-expanded') == 'true') {
-        navbar.hide();
-    }
-};
-
-var navlinks = document.getElementsByClassName('nav-link');
-for(var i = 0; i < navlinks.length; i++) {
-    navlinks[i].onclick = collapseNavbar;
-}
+var navbarElement = document.getElementById('navbar-content');
+var navbar = new bootstrap.Collapse(navbarElement, {toggle: false});
 
 // Register navigation event handler
 window.onhashchange = function() {
@@ -144,6 +136,7 @@ window.onhashchange = function() {
         // go to awards list (default)
         mcstats.showAwardsList();
     }
+    
+    // collapse navbar
+    navbar.hide();
 };
-
-

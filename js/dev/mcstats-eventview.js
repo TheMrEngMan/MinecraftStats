@@ -12,24 +12,18 @@ mcstats.showEvent = function(id) {
 
             tbody += `
                 <tr>
-                    <td class="text-right">${rankWidget}</th>
+                    <td class="text-end">${rankWidget}</th>
                     <td>${playerWidget}</td>
-                    <td class="text-data text-right">${value}</td>
+                    <td class="text-data text-end">${value}</td>
                 </tr>
             `;
         });
 
         var eventTime;
         if(e.active) {
-            eventTime = `
-            This event is <span class="text-success">LIVE</span>
-            since <span class="text-info">${formatTime(e.startTime)}!</span>`;
+            eventTime = mcstats.localize('page.eventView.eventStatus.live', [formatTime(e.startTime)]);
         } else {
-            eventTime = `
-                This event went from
-                <span class="text-info">${formatTime(e.startTime)}</span>
-                to <span class="text-info">${formatTime(e.stopTime)}</span>
-                and has already <span class="text-danger">finished</span>.`;
+            eventTime = mcstats.localize('page.eventView.eventStatus.finished', [formatTime(e.startTime), formatTime(e.stopTime)]);
         }
 
         mcstats.viewContent.innerHTML = `
@@ -37,9 +31,9 @@ mcstats.showEvent = function(id) {
             <div class="round-box p-1">
                 <table class="table table-responsive-xs table-hover table-sm">
                 <thead>
-                    <th scope="col" class="text-right text-shadow">Rank</th>
-                    <th scope="col" class="text-shadow">Player</th>
-                    <th scope="col" class="text-right text-shadow">${award.desc}</th>
+                    <th scope="col" class="text-end text-shadow">${mcstats.localize('stat.rank')}</th>
+                    <th scope="col" class="text-shadow">${mcstats.localize('stat.player')}</th>
+                    <th scope="col" class="text-end text-shadow">${award.desc}</th>
                 </thead>
                 <tbody>${tbody}</tbody>
                 </table>
@@ -50,7 +44,7 @@ mcstats.showEvent = function(id) {
         // show
         mcstats.showView(
             e.title,
-            e.active ? 'Event Leaderboard' : 'Event Ranking',
+            mcstats.localize(e.active ? 'page.eventView.title.active' : 'page.eventView.title.inactive'),
             eventTime,
             'img/award-icons/' + awardId + '.png');
     });

@@ -64,15 +64,6 @@ class StatSumMatchReader:
 
         return sum
 
-# Reader that counts the amount of entries of a list
-class StatListLengthReader:
-    def __init__(self, path):
-        self.path = path
-
-    # read from stats
-    def read(self, stats):
-        return len(read(stats, self.path, []))
-
 # Ranking entries
 class RankingEntry:
     def __init__(self, id, value):
@@ -113,6 +104,10 @@ class Ranking:
     def sort(self):
         self.ranking.sort(reverse=True)
 
+# Aggregation functions
+def aggregateSum(a, b):
+    return {'value': a['value'] + b['value']}
+
 # Base for all minecraft stats
 class MinecraftStat(Ranking):
     def __init__(self, name, meta, reader, minVersion = 1451, maxVersion = float("inf")):
@@ -124,6 +119,7 @@ class MinecraftStat(Ranking):
         self.maxVersion = maxVersion
         self.linkedStat = False
         self.playerStatRelevant = True
+        self.aggregate = aggregateSum
 
     # enter the player with id and value into the ranking
     def enter(self, id, value):
@@ -135,7 +131,7 @@ class MinecraftStat(Ranking):
 
     # read the statistic value from the player stats
     def read(self, stats):
-        return self.reader.read(stats)
+        return {'value': self.reader.read(stats)}
 
     # test if this stat can be used right now
     def isEligible(self, version):
@@ -145,37 +141,9 @@ class MinecraftStat(Ranking):
     def canEnterRanking(self, id, active):
         return active
 
-# Legacy statistics for supporting older data versions
-class LegacyStat:
-    def __init__(self, link, minVersion, maxVersion, reader):
-        self.link = link
-        self.name = link.name
-        self.minVersion = minVersion
-        self.maxVersion = maxVersion
-        self.reader = reader
-        self.linkedStat = True
-        self.playerStatRelevant = True
-
-    # enter the player with id and value into the linked ranking
-    def enter(self, id, value):
-        self.link.enter(id, value)
-
-    # read the statistic value from the player stats
-    def read(self, stats):
-        return self.reader.read(stats)
-
-    # test if this stat can be used right now
-    def isEligible(self, version):
-        return MinecraftStat.isEligible(self, version);
-
-    # test if this player may enter the ranking
-    def canEnterRanking(self, id, active):
-        return active
-
 # Event statistics for temporary events
-# similar to event stats in some ways
 class EventStat(Ranking):
-    def __init__(self, name, title, link, startTime = None, stopTime = None, initialRanking = dict(), ranking = [], active = True):
+    def __init__(self, name, title, link, startTime, endTime):
         global now
 
         self.name = name
@@ -183,19 +151,20 @@ class EventStat(Ranking):
         self.link = link
         self.minVersion = link.minVersion
         self.maxVersion = link.maxVersion
-        self.startTime = now if startTime is None else startTime
-        self.stopTime = stopTime
-        self.initialRanking = initialRanking
-        self.ranking = ranking
-        self.active = active
+        self.startTime = startTime
+        self.endTime = endTime
+        self.initialRanking = dict()
+        self.ranking = []
         self.linkedStat = True
         self.playerStatRelevant = False
 
     # enter the player with id and value delta into the ranking
     def enter(self, id, value):
         global now
+        
+        value = value['value'] # yikes!
 
-        if now > self.startTime:
+        if self.hasStarted():
             # subtract initial value and enter
             if id in self.initialRanking:
                 initial = self.initialRanking[id]
@@ -204,22 +173,32 @@ class EventStat(Ranking):
 
             MinecraftStat.enter(self, id, value - initial)
         elif value > 0:
-            # first time we are entering somebody
-            # do not really enter, but only save the initial score
+            # event is not yet running, update the initial score
             self.initialRanking[id] = value
 
     # read the statistic value from the player stats via the linked stat
     def read(self, stats):
-        return self.link.read(stats)
+        return {'value': self.link.read(stats)}
+
+    # test if the event has already started
+    def hasStarted(self):
+        global now
+        return now >= self.startTime
+
+    def hasEnded(self):
+        global now
+        return now >= self.endTime
+
+    def isRunning(self):
+        return self.hasStarted() and not self.hasEnded()
 
     # test if this stat can be used right now
     def isEligible(self, version):
-        return MinecraftStat.isEligible(self, version) if self.active else False
+        return MinecraftStat.isEligible(self, version)
 
     # test if this player may enter the ranking
     def canEnterRanking(self, id, active):
-        global now
-        return active if now > self.startTime else True # enter everybody into the initial ranking
+        return not self.hasEnded() # nb: inactive players must be considered for the initial ranking
 
     # serializes the event stat to a dictionary
     def serialize(self):
@@ -232,27 +211,10 @@ class EventStat(Ranking):
             'title':          self.title,
             'link':           self.link.name,
             'startTime':      self.startTime,
-            'stopTime':       self.stopTime,
+            'endTime':        self.endTime,
             'initialRanking': self.initialRanking,
-            'ranking':        ranking,
-            'active':         self.active
+            'ranking':        ranking
         }
-
-    # deserializes an event stat from a dictionary
-    def deserialize(data, registry):
-        ranking = []
-        for entry in data['ranking']:
-            ranking.append(RankingEntry(entry['uuid'], entry['value']))
-
-        return EventStat(
-            data['name'],
-            data['title'],
-            registry[data['link']],
-            data['startTime'],
-            data['stopTime'],
-            data['initialRanking'],
-            ranking,
-            data['active'])
 
 # Crown score (a meta statistic)
 class CrownScore:

@@ -1,5 +1,10 @@
-// Number formatter
-intlFormat = new Intl.NumberFormat('en');
+intlFormat = null;
+formatInt = function(value) {
+    if(intlFormat === null) {
+        intlFormat = new Intl.NumberFormat(mcstats.localize('locale'));
+    }
+    return intlFormat.format(value);
+};
 
 formatFloat = function(value) {
     return (value != parseInt(value)) ? value.toFixed(1) : value;
@@ -9,41 +14,17 @@ formatDate = function(unixTime) {
     var date = new Date();
     date.setTime(unixTime * 1000);
 
-    return date.toLocaleDateString('en-US', {day: 'numeric', month: 'short', year: 'numeric'});
+    return date.toLocaleDateString(mcstats.localize('locale'), {day: 'numeric', month: 'short', year: 'numeric'});
 };
 
 formatTime = function(unixTime) {
     var date = new Date();
     date.setTime(unixTime * 1000);
 
-    return date.toLocaleDateString('en-US', {day: 'numeric', month: 'short', year: 'numeric'}) +
+    var locale = mcstats.localize('locale');
+    return date.toLocaleDateString(locale, {day: 'numeric', month: 'short', year: 'numeric'}) +
         ' - ' +
-        date.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', hour12: false});
-};
-formatDate = function(unixTime) {
-    var date = new Date();
-    date.setTime(unixTime * 1000);
-
-    return date.toLocaleDateString('en-US', {day: 'numeric', month: 'short', year: 'numeric'});
-};
-
-wordSmallInt = function(x) {
-    switch(x) {
-        case 0:  return 'zero';
-        case 1:  return 'one';
-        case 2:  return 'two';
-        case 3:  return 'three';
-        case 4:  return 'four';
-        case 5:  return 'five';
-        case 6:  return 'six';
-        case 7:  return 'seven';
-        case 8:  return 'eight';
-        case 9:  return 'nine';
-        case 10:  return 'ten';
-        case 11:  return 'eleven';
-        case 12:  return 'twelve';
-        default: return ''+x;
-    }
+        date.toLocaleTimeString(locale, {hour: '2-digit', minute: '2-digit', hour12: false});
 };
 
 // Format an award value
@@ -52,10 +33,10 @@ mcstats.formatValue = function(value, unit, compact = false) {
         case 'cm':
             if(value >= 100000) {
                 value /= 100000;
-                unit = 'km';
+                unit = mcstats.localize('stat.unit.distance.kilometers');
             } else if(value >= 100) {
                 value /= 100;
-                unit = 'm';
+                unit = mcstats.localize('stat.unit.distance.meters');
             }
 
             value = formatFloat(value) + unit;
@@ -69,23 +50,23 @@ mcstats.formatValue = function(value, unit, compact = false) {
                 var higher = false;
 
                 if(seconds > 86400) {
-                    value += Math.floor(seconds / 86400) + 'd ';
+                    value += Math.floor(seconds / 86400) + mcstats.localize('stat.unit.duration.days') + ' ';
                     seconds %= 86400;
                     higher = true;
                 }
 
                 if(higher || seconds > 3600) {
-                    value += Math.floor(seconds / 3600) + 'h ';
+                    value += Math.floor(seconds / 3600) + mcstats.localize('stat.unit.duration.hours') + ' ';
                     seconds %= 3600;
                     higher = true;
                 }
 
                 if(higher || seconds > 60) {
-                    value += Math.floor(seconds / 60) + 'min ';
+                    value += Math.floor(seconds / 60) + mcstats.localize('stat.unit.duration.minutes') + ' ';
                     seconds %= 60;
                 }
 
-                value += Math.floor(seconds) + 's';
+                value += Math.floor(seconds) + mcstats.localize('stat.unit.duration.seconds');
             } else {
                 // aligned tabular view
                 var table = `<table class="time-data"><tbody><tr>`
@@ -93,7 +74,7 @@ mcstats.formatValue = function(value, unit, compact = false) {
 
                 if(seconds > 86400) {
                     var days = Math.floor(seconds / 86400);
-                    table += `<td class="days">${days}d</td>`
+                    table += `<td class="days">${days}${mcstats.localize('stat.unit.duration.days')}</td>`
 
                     seconds %= 86400;
                     higher = true;
@@ -103,7 +84,7 @@ mcstats.formatValue = function(value, unit, compact = false) {
 
                 if(higher || seconds > 3600) {
                     var hours = Math.floor(seconds / 3600);
-                    table += `<td class="hours">${hours}h</td>`
+                    table += `<td class="hours">${hours}${mcstats.localize('stat.unit.duration.hours')}</td>`
                     seconds %= 3600;
                     higher = true;
                 } else {
@@ -112,7 +93,7 @@ mcstats.formatValue = function(value, unit, compact = false) {
 
                 if(higher || seconds > 60) {
                     var minutes = Math.floor(seconds / 60);
-                    table += `<td class="minutes">${minutes}min</td>`
+                    table += `<td class="minutes">${minutes}${mcstats.localize('stat.unit.duration.minutes')}</td>`
 
                     seconds %= 60;
                 } else {
@@ -120,18 +101,22 @@ mcstats.formatValue = function(value, unit, compact = false) {
                 }
 
                 seconds = Math.floor(seconds);
-                table += `<td class="seconds">${seconds}s</td>`;
+                table += `<td class="seconds">${seconds}${mcstats.localize('stat.unit.duration.seconds')}</td>`;
                 table += `</tbody></table>`;
                 return table;
             }
             break;
 
+        case 'tenths_of_heart':
+            value = formatFloat(parseInt(value) / 10.0);
+            break;
+
         case 'int':
-            value = intlFormat.format(parseInt(value));
+            value = formatInt(parseInt(value));
             break;
 
         default:
-            value = '' + value + ' ' + unit;
+            value = '' + value + ' ' + mcstats.localize('stat.unit.' + unit);
             break;
     }
 
@@ -140,8 +125,8 @@ mcstats.formatValue = function(value, unit, compact = false) {
 
 // Award types
 mcstats.awardType = {
-    medal: {title: 'Medal', imgPrefix: 'fatcow/medal_award_'},
-    crown: {title: 'Crown', imgPrefix: 'fatcow/crown_'},
+    medal: {locPrefix: 'stat.rank.medal.', imgPrefix: 'fatcow/medal_award_'},
+    crown: {locPrefix: 'stat.rank.crown.', imgPrefix: 'fatcow/crown_'},
 };
 
 // Create a rank widget
@@ -149,24 +134,21 @@ mcstats.rankWidget = function(rank, type = 'medal') {
     var awardType = mcstats.awardType[type];
     if(rank) {
         var widget = `<span class="rank rank-${rank}">#${rank}</span>`;
-        var medal, medalTitle;
+        var medal;
         switch(rank) {
             case 1:
                 // gold
                 medal = 'gold';
-                medalTitle = 'Gold';
                 break;
 
             case 2:
                 // silver
                 medal = 'silver';
-                medalTitle = 'Silver';
                 break;
 
             case 3:
                 // bronze
                 medal = 'bronze';
-                medalTitle = 'Bronze';
                 break;
 
             default:
@@ -175,7 +157,7 @@ mcstats.rankWidget = function(rank, type = 'medal') {
 
         if(medal) {
             widget = `
-                <img class="img-textsize-1_5 mr-1 align-top" title="${medalTitle} ${awardType.title}" src="img/${awardType.imgPrefix}${medal}.png"/>
+                <img class="img-textsize-1_5 me-1 align-top" title="${mcstats.localize(awardType.locPrefix + medal)}" src="img/${awardType.imgPrefix}${medal}.png"/>
             ` + widget;
         }
     } else {
@@ -261,7 +243,7 @@ mcstats.makePlayerWidget = function(uuid, skinCss, asLink) {
         (asLink ? `<a href="#player:${uuid}">${p.name}</a>` : p.name);
 }
 
-mcstats.playerWidget = function(uuid, skinCss = 'textw-1_5 texth-1_5 align-baseline mr-1', asLink = true) {
+mcstats.playerWidget = function(uuid, skinCss = 'textw-1_5 texth-1_5 align-baseline me-1', asLink = true) {
     if(uuid) {
         if(uuid in mcstats.players) {
             return mcstats.makePlayerWidget(uuid, skinCss, asLink);
@@ -273,7 +255,7 @@ mcstats.playerWidget = function(uuid, skinCss = 'textw-1_5 texth-1_5 align-basel
             return `<span id=${uuid}>${uuid}</span>`;
         }
     } else {
-        return `<span class="text-muted">(nobody)</span>`;
+        return `<span class="text-muted">${mcstats.localize('nobody')}</span>`;
     }
 };
 

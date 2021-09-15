@@ -45,8 +45,9 @@ create_kill_stat('wither_skeleton','Wither Or Not','Wither Skeletons')
 
 # Neutrals
 create_kill_stat('bee','Beegone!','Bees',2200) # added in 19w34a
-create_kill_stat('dolphin','Dolphin Hunter','Dolphins',1482) # added in 18w15a
+create_kill_stat('dolphin','Dolphin Hunter','Dolphins', 1482) # added in 18w15a
 create_kill_stat('enderman','Enderman Ender','Endermen')
+create_kill_stat('goat','G.O.A.T.','Goats', 2705) # added in 21w13a
 create_kill_stat('iron_golem','Defense Down!','Iron Golems')
 create_kill_stat('panda','Kung FU! Panda','Pandas',1901) # added in 18w43a
 create_kill_stat('piglin','Kill or Be Killed','Piglins', 2506) # added in 20w07a
@@ -54,8 +55,10 @@ create_kill_stat('polar_bear','Polar Hunter','Polar Bears')
 create_kill_stat('snow_golem','AntiFrosty','Snow Golems')
 create_kill_stat('zombie_pigman','Nether Gang War','Zombie Pigmen',0,2510) # renamed to Zombified Piglin in 20w09a
 create_kill_stat('zombified_piglin','Nether Gang War','Zombified Piglins',2510)   # added in 20w09a
+create_kill_stat('piglin_brute','Brutal','Piglin Brutes',2569)   # added in 20w27a
 
 # Passives
+create_kill_stat('axolotl','Sir Axolot','Axolotls',2687) #added in 20w51a
 create_kill_stat('bat','Bat Flap','Bats')
 create_kill_stat('chicken','Chicken Griller','Chickens')
 create_kill_stat('cow','Cow Tipper','Cows')
@@ -66,7 +69,6 @@ create_kill_stat('parrot','Stupid Bird!','Parrots')
 create_kill_stat('pig','Pork Chopper','Pigs')
 create_kill_stat('rabbit','Bunny Killer :(','Rabbits')
 create_kill_stat('sheep','Big Bad Wolf','Sheep')
-create_kill_stat('squid','Pool Cleaner','Squids')
 create_kill_stat('strider','Lava Pool Cleaner','Striders',2520) # added in 20w13a
 create_kill_stat('turtle','Super Mario','Turtles',1467) # added in 18w07a
 create_kill_stat('villager','Immoral','Villagers')
@@ -215,4 +217,19 @@ mcstats.registry.append(
             mcstats.StatReader(['minecraft:killed','minecraft:tropical_fish']),
         ]),
         1471 # fish mobs added in 18w08b
+    ))
+
+# Squids (including glow squids)
+mcstats.registry.append(
+    mcstats.MinecraftStat(
+        'kill_squid',
+        {
+            'title': 'Pool Cleaner',
+            'desc': 'Squids killed',
+            'unit': 'int',
+        },
+        mcstats.StatSumReader([
+            mcstats.StatReader(['minecraft:killed','minecraft:glow_squid']),
+            mcstats.StatReader(['minecraft:killed','minecraft:squid']),
+        ])
     ))

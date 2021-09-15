@@ -40,7 +40,13 @@ args = parser.parse_args()
 # load config
 if os.path.isfile(args.config):
     with open(args.config, 'r', encoding="utf8") as configFile:
-        merge_dict(configJson, json.load(configFile))
+        try:
+            loadedConfigJson = json.load(configFile)
+        except Exception as e:
+            print('ERROR: failed to load config JSON')
+            handle_error(e, True)
+        
+        merge_dict(configJson, loadedConfigJson)
 else:
     # save default
     print('writing default config to ' + args.config)
@@ -49,9 +55,39 @@ else:
 
 config = RecursiveNamespace(**configJson)
 
-# ensure config
-if not config.server.path:
-    handle_error('server.path not configured, please edit ' + args.config, True)
+# get sources
+sources = []
+if hasattr(config.server, 'path') and config.server.path:
+    handle_error('server.path is deprecated, please use server.sources instead to configure your paths')
+    
+    worldName = config.server.worldName
+    if isinstance(config.server.path, list):
+        serverPaths = config.server.path
+    else:
+        serverPaths = [config.server.path]
+
+    for path in serverPaths:
+        sources.append((path, worldName))
+
+if isinstance(config.server.sources, list):
+    for e in config.server.sources:
+        sources.append((e.path, e.worldName))
+
+if len(sources) == 0:
+    handle_error('server.sources not configured, please consult the documentation and edit ' + args.config, True)
+
+statsDirs = []
+advancementDirs = []
+
+for (path, worldName) in sources:
+    if not os.path.isdir(path):
+        handle_error('invalid path in server.sources: ' + str(path), True)
+
+    worldDir = os.path.join(path, worldName)
+    statsDirs.append(os.path.join(worldDir, 'stats'))
+    advancementDirs.append(os.path.join(worldDir, 'advancements'))
+
+primaryServerPath = sources[0][0]
 
 mcstats.CrownScore.gold = config.crown.gold
 mcstats.CrownScore.silver = config.crown.silver
@@ -66,27 +102,24 @@ def is_active(last):
 min_playtime = config.players.minPlaytime
 profile_update_interval = 86400 * config.players.profileUpdateInterval
 
-# paths
-serverPath = config.server.path
-mcWorldDir = serverPath + '/' + config.server.worldName;
-mcStatsDir = mcWorldDir + '/stats'
-mcAdvancementsDir = mcWorldDir + '/advancements'
-
-# sanity checks
-if not os.path.isdir(serverPath):
-    handle_error('not a directory: ' + serverPath, True)
-
-if not os.path.isdir(mcStatsDir):
-    handle_error('no valid stat directory: ' + mcStatsDir, True)
-
 # initialize event definitions
 Event = collections.namedtuple('Event', ['name', 'title', 'stat', 'startTime', 'endTime'])
 eventTimeFormat = '%Y-%m-%d %H:%M'
 
 events = []
+eventNames = set()
+
 for e in config.events:
+    if e.name in statByName:
+        handle_error('ERROR: event name must not collide with a stat name: \"' + e.name + '\"')
+        continue
+    
+    if e.name in eventNames:
+        handle_error('ERROR: duplicate event name: \"' + e.name + '\"')
+        continue
+    
     if not e.stat in statByName:
-        handle_error('ERROR: event ' + e.name + ' refers to unknown stat "' + e.stat + '"')
+        handle_error('ERROR: event \"' + e.name + '\" refers to unknown stat "' + e.stat + '"')
         continue
 
     stat = statByName[e.stat]
@@ -94,53 +127,56 @@ for e in config.events:
     endTime = int(datetime.datetime.strptime(e.endTime, eventTimeFormat).timestamp())
     
     if startTime >= endTime:
-        handle_error('ERROR: event ' + e.name + ': end time (' + e.endTime + ' lies before start time (' + e.startTime + ')')
+        handle_error('ERROR: event \"' + e.name + '\": end time (' + e.endTime + ' is before start time (' + e.startTime + ')')
         continue
-    
+
     events.append(Event(title=e.title, name=e.name, stat=stat, startTime=startTime, endTime=endTime))
+    eventNames.add(e.name)
 
 # init paths
-dbRankingsPath = config.database + '/rankings'
-dbPlayerDataPath = config.database + '/playerdata'
-dbPlayerCachePath = config.database + '/playercache'
-dbEventsPath = config.database + '/events'
+dbRankingsPath = os.path.join(config.database, 'rankings')
+dbPlayerDataPath = os.path.join(config.database, 'playerdata')
+dbPlayerCachePath = os.path.join(config.database, 'playercache')
+dbEventsPath = os.path.join(config.database, 'events')
 
 playerCacheQ = config.client.playerCacheUUIDPrefix
 playersPerPage = config.client.playersPerPage
 
-dbPlayersFilename = config.database + '/players.json'
-dbSummaryFilename = config.database + '/summary.json.gz'
+dbPlayersFilename = os.path.join(config.database, 'players.json')
+dbSummaryFilename = os.path.join(config.database, 'summary.json.gz')
 
-dbPlayerListPath = config.database + '/playerlist'
-dbPlayerListAllFilename = dbPlayerListPath + '/all{}.json.gz'
-dbPlayerListActiveFilename = dbPlayerListPath + '/active{}.json.gz'
-
-# clean old format database
-oldDbFilename = config.database + '/db.json.gz'
-if os.path.isfile(oldDbFilename):
-    print('Removing deprecated database file: ' + oldDbFilename)
-    os.remove(oldDbFilename)
+dbPlayerListPath = os.path.join(config.database, 'playerlist')
+dbPlayerListAllFilename = os.path.join(dbPlayerListPath, 'all{}.json.gz')
+dbPlayerListActiveFilename = os.path.join(dbPlayerListPath, 'active{}.json.gz')
 
 # get server.properties motd if no server name is set
 if config.server.customName:
     serverName = config.server.customName
 else:
+    serverName = None
+
     p = re.compile('^motd=(.+)$')
-    with open(serverPath + '/server.properties', encoding='utf-8') as f:
+    with open(os.path.join(primaryServerPath, 'server.properties'), encoding='utf-8') as f:
         for line in f:
             m = p.match(line)
             if m:
                 serverName = javaproperties.unescape(m.group(1)).replace('\n', '<br>')
                 break
 
+    if not serverName:
+        serverName = ''
+        print('Server name could not be extracted from server.properties - does it contain a "motd" line?')
+
 # try and load usercache
 usercache = dict()
-try:
-    with open(serverPath + '/usercache.json') as f:
-        for entry in json.load(f):
-            usercache[entry['uuid']] = entry['name']
-except:
-    handle_error('Cannot use usercache.json for offline player lookup')
+for (path, _) in sources:
+    usercacheFile = os.path.join(path, 'usercache.json')
+    try:
+        with open(usercacheFile) as f:
+            for entry in json.load(f):
+                usercache[entry['uuid']] = entry['name']
+    except:
+        handle_error('Cannot open ' + usercacheFile + ' for offline player lookup')
 
 # exclude players
 excludePlayers = set()
@@ -150,21 +186,25 @@ for uuid in config.players.excludeUUIDs:
 
 # exclude banned players
 if config.players.excludeBanned:
-    try:
-        with open(serverPath + '/banned-players.json') as f:
-            for entry in json.load(f):
-                excludePlayers.add(entry['uuid'])
-    except:
-        handle_error('Cannot use banned-players.json for banned player exclusion')
+    for (path, _) in sources:
+        bannedPlayersFile = os.path.join(path, 'banned-players.json')
+        try:
+            with open(bannedPlayersFile) as f:
+                for entry in json.load(f):
+                    excludePlayers.add(entry['uuid'])
+        except:
+            handle_error('Cannot open ' + bannedPlayersFile + ' for banned player exclusion')
 
 # exclude ops
 if config.players.excludeOps:
-    try:
-        with open(serverPath + '/ops.json') as f:
-            for entry in json.load(f):
-                excludePlayers.add(entry['uuid'])
-    except:
-        handle_error('Cannot use ops.json for op exclusion')
+    for (path, _) in sources:
+        opsFile = os.path.join(path, 'ops.json')
+        try:
+            with open(opsFile) as f:
+                for entry in json.load(f):
+                    excludePlayers.add(entry['uuid'])
+        except:
+            handle_error('Cannot open ' + opsFile + ' for op exclusion')
 
 # initialize database
 if not os.path.isdir(config.database):
@@ -196,80 +236,90 @@ if os.path.isfile(dbPlayersFilename):
 else:
     players = dict()
 
-# find available player IDs in stats dir
-try:
-    for file in os.listdir(mcStatsDir):
-        if file.endswith('.json'):
-            uuid = file[:-5] # cut off '.json' extension
-            if not uuid in players:
-                players[uuid] = {}
-except Exception as e:
-    print('failed to read player data directory: ' + mcStatsDir)
-    handle_error(e, True)
+# remove excluded players
+for uuid in excludePlayers:
+    if uuid in players:
+        del players[uuid]
+
+# find available player IDs in stats dirs
+for statsDir in statsDirs:
+    try:
+        for file in os.listdir(statsDir):
+            if file.endswith('.json'):
+                uuid = file[:-5] # cut off '.json' extension
+                if (not uuid in players) and (not uuid in excludePlayers):
+                    players[uuid] = {}
+    except Exception as e:
+        print('failed to read player data directory: ' + statsDir)
+        handle_error(e, True)
 
 # init event stats
 eventStats = []
 eventStatByName = dict()
 activeEvents = set()
 
-try:
-    for file in os.listdir(dbEventsPath):
-        if file.endswith('.json'):
-            with open(dbEventsPath + '/' + file) as eventDataFile:
-                e = mcstats.EventStat.deserialize(
-                    json.load(eventDataFile), statByName)
-
-                eventStats.append(e)
-                eventStatByName[e.name] = e
-
-                if e.active:
-                    e.ranking = [] # clear, will be re-calculated
-                    activeEvents.add(e.name)
-
-except Exception as e:
-    print('failed to read event data directory: ' + dbEventsPath)
-    handle_error(e, True)
-
-# possibly start events
 for e in events:
-    if mcstats.now >= e.startTime and mcstats.now < e.endTime:
-        # this event should be running
-        if not e.name in activeEvents:
-            if e.name in eventStatByName:
-                handle_error('ERROR: duplicate event ' + e.name)
-                continue
-        
-            # ... but it's not - start it
-            eventStat = mcstats.EventStat(e.name, e.title, e.stat)
-            eventStats.append(eventStat)
-            eventStatByName[e.name] = eventStat
-            activeEvents.add(e.name)
-            print('event "' + e.title + '" (' + e.name + ') has started!')
+    eventStat = mcstats.EventStat(e.name, e.title, e.stat, e.startTime, e.endTime)
+
+    # load the initial ranking if available
+    eventDataFile = os.path.join(dbEventsPath, e.name + '.json')
+    if os.path.isfile(eventDataFile):
+        with open(eventDataFile) as f:
+            eventData = json.load(f)
+            eventStat.initialRanking = eventData['initialRanking']
+    elif eventStat.hasStarted():
+        print('event \"' + e.name + '\" has already started, but no initial ranking is available')
+
+    eventStats.append(eventStat)
+    eventStatByName[e.name] = eventStat
+
+    if not eventStat.hasEnded():
+        activeEvents.add(e.name)
 
 # update player data
 serverVersion = 0
 hof = mcstats.Ranking()
 
 for uuid, player in players.items():
-    # check if uuid is excluded
-    if uuid in excludePlayers:
-        continue
+    # check if any data files are available and get basic data
+    last = 0
+    playtimeTicks = 0
+    version = 0
+    datasets = []
+    
+    for i, statsDir in enumerate(statsDirs):
+        dataFilename = os.path.join(statsDir, uuid + '.json')
+        if os.path.isfile(dataFilename):
+            last = max(last, int(os.path.getmtime(dataFilename)))
+            
+            with open(dataFilename) as f:
+                data = json.load(f)
 
-    # check if data file is available
-    dataFilename = mcStatsDir + '/' + uuid + '.json'
-    if not os.path.isfile(dataFilename):
-        # got no data for this dude
-        continue
+            if 'DataVersion' in data:
+                version = max(version, data['DataVersion'])
 
-    # load data
-    try:
-        with open(dataFilename) as dataFile:
-            data = json.load(dataFile)
-    except Exception as e:
-        print('failed to update player data for ' + uuid)
-        handle_error(e)
-        continue
+            if 'stats' in data:
+                stats = data['stats']
+                
+                if 'minecraft:custom' in stats:
+                    custom = stats['minecraft:custom']
+                    if 'minecraft:play_time' in custom:
+                        playtimeTicks += int(custom['minecraft:play_time']) # new in 21w16a (data version 2711)
+                    if 'minecraft:play_one_minute' in custom:
+                        playtimeTicks += int(custom['minecraft:play_one_minute'])
 
+                # also attempt to load advancements
+                advFilename = os.path.join(advancementDirs[i], uuid + '.json')
+                if os.path.isfile(advFilename):
+                    with open(advFilename) as advFile:
+                        stats['advancements'] = json.load(advFile)
+
+                datasets.append(stats)
+    
+    # check if any data is available
+    if len(datasets) == 0:
+        continue
+    
     # check data version
     if 'DataVersion' in data:
         version = data['DataVersion']
@@ -280,18 +330,10 @@ for uuid, player in players.items():
         print('unsupported data version ' + str(version) + ' for ' + uuid)
         continue
 
+    # find latest overall server version
     serverVersion = max(serverVersion, version)
 
-    # collapse stats
-    stats = data['stats']
-
-    # get amount of time played
-    playtimeTicks = 0
-    if 'minecraft:custom' in stats:
-        custom = stats['minecraft:custom']
-        if 'minecraft:play_one_minute' in custom:
-            playtimeTicks = custom['minecraft:play_one_minute']
-
+    # get total amount of time played
     playtimeMinutes = playtimeTicks / (20 * 60);
     if playtimeMinutes < min_playtime:
         # invalidate player and continue
@@ -299,12 +341,10 @@ for uuid, player in players.items():
         player.pop('last', None)
         continue
 
-    # get last play time and determine activity
-    last = int(os.path.getmtime(dataFilename))
+    # determine activity
     player['last'] = last
-
     active = is_active(last)
-
+    
     # update skin
     if (not 'name' in player) or active or config.players.updateInactive:
         if 'update' in player:
@@ -350,24 +390,28 @@ for uuid, player in players.items():
     playerStats = dict()
     player['stats'] = playerStats
 
-    # try and load advancements into stats
-    advFilename = mcAdvancementsDir + '/' + uuid + '.json'
-    try:
-        with open(advFilename) as advFile:
-            stats['advancements'] = json.load(advFile)
-    except:
-        stats['advancements'] = dict()
+    # process registry and event stats for each dataset
+    for stats in datasets:
+        for mcstat in mcstats.registry + eventStats:
+            if mcstat.isEligible(version):
+                value = mcstat.read(stats)
+                if mcstat.name in playerStats:
+                    value = mcstat.aggregate(playerStats[mcstat.name], value)
+                
+                playerStats[mcstat.name] = value
 
-    # process registry and event stats
+    # enter into rankings
     for mcstat in mcstats.registry + eventStats:
-        if mcstat.isEligible(version):
-            value = mcstat.read(stats)
-
-            if mcstat.playerStatRelevant:
-                playerStats[mcstat.name] = {'value':value}
-
+        if mcstat.name in playerStats:
+            value = playerStats[mcstat.name]['value']
+            
             if mcstat.canEnterRanking(uuid, active):
                 mcstat.enter(uuid, value)
+
+            if mcstat.playerStatRelevant:
+                playerStats[mcstat.name] = {'value': value} # collapse
+            else:
+                del playerStats[mcstat.name] # we don't need this anymore
 
     # init crown score
     if active:
@@ -413,7 +457,7 @@ for mcstat in mcstats.registry:
     for entry in mcstat.ranking:
         outRanking.append({'uuid':entry.id,'value':entry.value})
 
-    with open(dbRankingsPath + '/' + mcstat.name + '.json', 'w') as rankingFile:
+    with open(os.path.join(dbRankingsPath, mcstat.name + '.json'), 'w') as rankingFile:
         json.dump(outRanking, rankingFile)
 
     # set first rank in award info
@@ -426,20 +470,14 @@ for mcstat in mcstats.registry:
     # add to award info list
     awards[mcstat.name] = award
 
-# possibly stop events
-for e in events:
-    if mcstats.now >= e.endTime and e.name in activeEvents:
-        # stop event
-        eventStat = eventStatByName[e.name]
-        eventStat.active = False
-        eventStat.stopTime = mcstats.now
-        # nb: do NOT exclude from activeEvents - we still need to save it!
-        print('event "' + e.title + '" (' + e.name + ') has ended!')
-
 # process events
 summaryEvents = dict()
 
 for event in eventStats:
+    # events that did not yet start should not appear on the client
+    if not event.hasStarted():
+        continue
+
     # check version
     if serverVersion < mcstat.minVersion:
         print('event "' + event.name + '" is not supported by server version '
@@ -454,8 +492,8 @@ for event in eventStats:
         'title':     event.title,
         'link':      event.link.name,
         'startTime': event.startTime,
-        'stopTime':  event.stopTime,
-        'active':    event.active,
+        'stopTime':  event.endTime,
+        'active':    event.isRunning(),
     }
 
     if(len(event.ranking) > 0):
@@ -474,7 +512,7 @@ numActivePlayers = 0
 numTotalPlayers = len(players.items())
 
 for uuid, player in players.items():
-    if (not uuid in excludePlayers) and  ('last' in player) and ('name' in player) and ('stats' in player):
+    if ('last' in player) and ('name' in player) and ('stats' in player):
         validPlayers[uuid] = player
 
         name = player['name']
@@ -500,7 +538,7 @@ for uuid, player in players.items():
         if is_active(last):
             numActivePlayers += 1
 
-        with open(dbPlayerDataPath + '/' + uuid + '.json', 'w') as dataFile:
+        with open(os.path.join(dbPlayerDataPath, uuid + '.json'), 'w') as dataFile:
             json.dump(player['stats'], dataFile)
 
 players = validPlayers
@@ -511,13 +549,14 @@ with open(dbPlayersFilename, 'w') as playersFile:
 
 # write event data
 for ename in activeEvents:
-    with open(dbEventsPath + '/' + ename + '.json', 'w') as dataFile:
+    with open(os.path.join(dbEventsPath , ename + '.json'), 'w') as dataFile:
         json.dump(eventStatByName[ename].serialize(), dataFile)
 
 # copy server icon if available
-if os.path.isfile(serverPath + '/server-icon.png'):
+serverIconFile = os.path.join(primaryServerPath, 'server-icon.png')
+if os.path.isfile(serverIconFile):
     has_icon = True
-    shutil.copy(serverPath + '/server-icon.png', config.database)
+    shutil.copy(serverIconFile, config.database)
 else:
     has_icon = False
 
@@ -561,8 +600,6 @@ for uuid in summaryPlayerIds:
         'last': player['last'],
     }
 
-# TODO: summarize events (id, display name, current best)
-
 # write summary for client
 summary = {
     'info': info,
@@ -590,7 +627,7 @@ for uuid, player in players.items():
     })
 
 for key, cache in playercache.items():
-    with open(dbPlayerCachePath + '/' + key + '.json', 'w') as cacheFile:
+    with open(os.path.join(dbPlayerCachePath, key + '.json'), 'w') as cacheFile:
         json.dump(cache, cacheFile)
 
 # write player list (all players)

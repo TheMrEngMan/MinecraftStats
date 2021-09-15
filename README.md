@@ -1,5 +1,10 @@
 # MinecraftStats
 
+[![Example Installation at DVGaming.com](https://img.shields.io/badge/Example-DVGaming.COM%20Snapshot%20Server-blue)](http://mine3.dvgaming.com/)
+[![Minecraft 1.13 to 1.17](https://img.shields.io/badge/Minecraft-1.13%20--%201.17-brightgreen)](https://www.minecraft.net/)
+[![License: CC BY-SA 4.0](https://img.shields.io/badge/License-CC%20BY--SA%204.0-lightgrey.svg)](https://github.com/pdinklag/MinecraftStats/blob/master/LICENSE.txt)
+[![Discord](https://img.shields.io/discord/850982115633790976.svg?label=Discord&logo=discord&logoColor=ffffff&color=8399E8&labelColor=7A7EC2)](https://discord.gg/brH5PGG8By)
+
 _MinecraftStats_ is a web browser application for the [statistics](http://minecraft.gamepedia.com/Statistics) that Minecraft servers collect about players.
 
 The presentation is done by giving __awards__ to players for certain achievements. For example, the player who played on the server for the longest total time receives the _Addict_ award. Every award has a viewable ranking associated to it with __medals__ - the award holder gets the gold medal, the second the silver medal and the third the bronze medal for the award. Each medal gives players a __crown score__ (1 for every bronze medal, 2 for every silver, 4 for every gold medal), which is displayed in a server __hall of fame__.
@@ -7,6 +12,8 @@ The presentation is done by giving __awards__ to players for certain achievement
 The system is highly customizable. All the awards are defined in Python modules that can be altered, added or removed to fit your needs. Additionally to simply reading Minecraft's original statistics, there are some awards that are combinations of various statistics.
 
 A live demo of _MinecraftStats_ in action is available here: [DVG Snapshot Stats](http://mine3.dvgaming.com/)
+
+Feel free to join the project [Discord](https://discord.gg/brH5PGG8By) 
 
 ## Setup Guide
 This section describes how to set up _MinecraftStats_ to work on your server.
@@ -84,9 +91,33 @@ The configuration JSON file supprots the following settings:
   * `profileUpdateInterval` - update player names and skins using the Mojang API every this many days (*default: 3*)
   * `updateInactive` - also update names and skins of inactive players (not recommended) (*default: false*)
 * `server`
+  * `sources` - a list of data sources, each of which must define the following
+    * `path` - the path to the Minecraft server installation (*no default*)
+    * `worldName` the name of the world on the server that contains the player statistics (`stats` directory with JSON files in it). In most cases, this is simply `world` (*default: world*).
   * `customName` - the server name to display on the home page. Leave this at `null` to use the MOTD from your `server.properties` (*default: null*)
-  * `path` - the path to your Minecraft server installation (*no default*).
-  * `worldName` - the name of the world on the server that contains the player statistics (`stats` directory with JSON files in it). In most cases, this is simply `world` (*default: world*).
+
+##### Combining Multiple Servers
+
+You can combine multiple servers (e.g., servers connected via BungeeCord) into a single stat database by listing multiple entries in the `server` &rarr; `sources` configuration like so:
+
+```json
+{
+    "server": {
+        "sources": [
+            {
+                "path": "/opt/minecraft/server1",
+                "worldName": "world1"
+            },
+            {
+                "path": "/opt/minecraft/server2",
+                "worldName": "world2"
+            },
+        ],
+    },
+}
+```
+
+Any number of servers can be combined this way. Note that *MinecraftStats* will get the server name (MOTD) and icon from the first source only.
 
 ##### Migrating Command-Line Configurations
 
@@ -113,9 +144,24 @@ In case you encounter any error messages and can't find an explanation, don't he
 After the update, you will have a `data` directory that contains everything the web application needs; refer to the *Database Structure* section for details.
 
 ### Automatic Updates
-_MinecraftStats_ does not include any means for automatic updates - you need to take care of this yourself. The most common way to do it on Linux servers is by creating a cronjob that starts the update script regularly, e.g., every 10 minutes.
+_MinecraftStats_ does not include any means for automatic updates - you need to take care of this yourself.
 
-If you're using Windows to run your server... figure something out!
+#### Cronjobs
+
+The most common way to do it on Linux servers is by creating a cronjob that starts the update script regularly, e.g., every 10 minutes.
+
+:warning: Note that ​ *MinecraftStats* will produce the output (`data` directory) in the *current working directory*, and not simply where `update.py` is located. This means that your cronjob may have to start with a `cd` to your *MinecraftStats* directory, otherwise the output will be created in the home directory of the cron user.
+
+Typically, a cronjob for *MinecraftStats* will look like this:
+
+```
+# update MinecraftStats every 10 minutes
+ */10 *  *  *  *  cd /path/to/mcstats ; python3 update.py config.json
+```
+
+#### Windows
+
+If you're using Windows to run your server... figure something out! There's probably some task scheduler available that you can use.
 
 ### FTP
 In case you use FTP to transfer the JSON files to another machine before updating, please note that _MinecraftStats_ uses a JSON file's last modified date in order to determine a player's last play time. Therefore, in order for it to function correctly, the last modified timestamps of the files need to be retained.
@@ -133,13 +179,13 @@ The `data` directory will contain the following after running an update:
 ## Events
 Events allow you to track a specific award stat for a limited amount of time. You can plan events via the `events` list in the config JSON. The following information needs to be specified for an event:
 
-* `name` - the *unique* internal name of the event, which needs to be a valid file and URL name, i.e., you should not use spaces or special characters here. Every event needs a different name, even if they share the same title.
+* `name` - the *unique* internal name of the event, which needs to be a valid file and URL name, i.e., you should not use spaces or special characters here. Every event needs a different name, even if they share the same title, and they must not collide with the ID of any actual stat.
 * `title` - the title of the event displayed in the browser.
 * `stat` - the ID of the award stat counted for the event. An easy way to find these IDs is by clicking an award in the browser and getting it from the URL.
-* `startTime` - the time at which the event starts in `YYYY-MM-DD HH:MM` format (4-digit year followed by 2-digit month, day, hour and minute).
+* `startTime` - the time at which the event starts in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format (e.g., `YYYY-MM-DD HH:MM`, where the hour field assumes a 24h day).
 * `endTime` - the time at which the event ends (same format as `startTime`).
 
-When you run `update.py`, events will automatically be started or stopped based on the current server time.
+When you run `update.py`, events will automatically be started or stopped based on the current server time. Please note that there should be at least one update *before* the event starts, so that each player's initial score can be saved.
 
 ##### Event Example
 
@@ -149,17 +195,18 @@ As an example, let's consider a Halloween-themed event called "Skeleton Hunt" th
 ...
 	"events": [
         {
-            "name": "skeleton_hunt_2020",
+            "name": "skeleton_hunt_2021",
             "title": "Skeleton Hunt",
             "stat": "kill_skeleton",
-            "startTime": "2020-10-30 10:00",
-            "endTime": "2020-01-01 00:00"
+            "startTime": "2021-10-30 10:00",
+            "endTime": "2021-01-01 00:00"
         }
     ],
 ...
 ```
 
 ## Customizing Awards
+
 I assume here that you have some very basic knowledge of Python, however, you may also get away without any.
 
 `update.py` imports all modules from the `mcstats/stats` directory. Here you will find many `.py` files that define the awards in a pretty straightforward way.
@@ -194,7 +241,14 @@ Note that some awards, e.g., all the mob kill awards, are grouped into a single 
 ## Development Notes
 This section contains some hints for those who want to develop on _MinecraftStats_.
 
-##### JavaScript and CSS minimization
+### Web Frontend Localization
+
+The web frontend is fully localized. If you cannot find your language yet, please feel very welcome to provide a localization and create a pull request! In order to add a new language, two things have to be done:
+
+* Create a new language JSON file in the `localizations` directory and fill it with your translations. For the file name, please choose the corresponding [ISO 639-1](https://en.wikipedia.org/wiki/ISO_639-1) code for your language.
+* Find the `language-dropdown` element in `index.html` and add a new entry for your language there. The text should be the name of the language in that language (e.g. "Deutsch" for German, which is the German word for "German"). Please try and keep the dropdown sorted alphabetically.
+
+### JavaScript and CSS minimization
 
 In an effort to reduce client traffic, the JavaScript and CSS files of the web UI are minified. The JavaScripts are minified using [terser](https://github.com/terser/terser). Refer to the `minimize.sh` script located in the `js` directory for the command-line used to do so. For CSS minimization, I use [uglifycss](https://www.npmjs.com/package/uglifycss) without any special command-line parameters.
 
